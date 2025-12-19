@@ -1,79 +1,159 @@
 import streamlit as st
 import random
+import time
 
-st.set_page_config(page_title="Blackjack Party", page_icon="🍻")
+st.set_page_config(page_title="Blackjack One-Card Pro", page_icon="🃏", layout="wide")
 
-# --- CONFIGURAZIONE INIZIALE ---
-if 'giocatori' not in st.session_state:
-    # Qui puoi aggiungere i nomi dei tuoi amici!
-    st.session_state.nomi = ["Giocatore 1", "Giocatore 2", "Giocatore 3"]
-    st.session_state.fiches = {nome: 21 for nome in st.session_state.nomi}
-    st.session_state.mazziere_idx = 0
-    st.session_state.turno_idx = 1 # Inizia il primo giocatore dopo il banco
-    st.session_state.fase = "PUNTATA"
-    st.session_state.puntate = {}
+# --- DATABASE CONDIVISO (Server-Side) ---
+@st.cache_resource
+def get_server_data():
+    return {
+        "setup_finito": False,
+        "posti_totali": 0,
+        "nomi": [],
+        "fiches": {},
+        "banco_idx": 0,
+        "sfidante_idx": 1,
+        "fase": "PUNTATA",
+        "carta_s": 0, "carta_b": 0, "puntata": 0,
+        "ultimo_risultato": "", "vincitori": []
+    }
 
-def get_mazziere():
-    return st.session_state.nomi[st.session_state.mazziere_idx]
+data = get_server_data()
 
-def get_giocatore_corrente():
-    idx = st.session_state.turno_idx % len(st.session_state.nomi)
-    return st.session_state.nomi[idx]
+# --- REFRESH AUTOMATICO (Trigger per il multiplayer) ---
+# Ogni secondo il browser controlla se qualcuno ha fatto una mossa
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
 
-st.title("🃏 Blackjack Party: Turno al Banco!")
-st.sidebar.title("💰 Classifica Fiches")
-for nome, f in st.session_state.fiches.items():
-    st.sidebar.write(f"{nome}: {f} 🪙")
+# --- RESET DI EMERGENZA ---
+if st.sidebar.button("🔄 Reset Totale Game"):
+    data.update({"setup_finito": False, "posti_totali": 0, "nomi": [], "fiches": {}, "vincitori": [], "fase": "PUNTATA"})
+    st.rerun()
 
-mazziere = get_mazziere()
-giocatore = get_giocatore_corrente()
+# --- 🏆 SCHERMATA VITTORIA (Coriandoli) ---
+if data["vincitori"]:
+    st.balloons()
+    st.title("🎊 CAMPIONATO CONCLUSO! 🎊")
+    vincitori_str = " e ".join(data["vincitori"])
+    st.header(f"🏆 I vincitori assoluti sono: {vincitori_str}")
+    st.subheader("Qualcuno è andato in bancarotta. Il tavolo è chiuso!")
+    if st.button("Ricomincia Nuova Partita"):
+        data.update({"setup_finito": False, "posti_totali": 0, "nomi": [], "fiches": {}, "vincitori": [], "fase": "PUNTATA"})
+        st.rerun()
+    st.stop()
 
-st.info(f"👑 Il Banco oggi è: **{mazziere}**")
-
-# --- FASE 1: PUNTATA ---
-if st.session_state.fase == "PUNTATA":
-    if giocatore == mazziere: # Se il turno torna al mazziere, la sfida è finita
-        st.session_state.mazziere_idx = (st.session_state.mazziere_idx + 1) % len(st.session_state.nomi)
-        st.session_state.turno_idx = (st.session_state.mazziere_idx + 1)
-        st.write("🔄 Il giro è finito! Il ruolo di Banco passa al prossimo.")
-        if st.button("Inizia Nuovo Giro"): st.rerun()
+# --- 🚪 LOBBY DI INGRESSO ---
+if not data["setup_finito"]:
+    st.title("🎲 Sala d'Attesa Blackjack")
+    if data["posti_totali"] == 0:
+        n = st.number_input("In quanti giocate al tavolo?", 2, 8, 3)
+        if st.button("Apri Tavolo"):
+            data["posti_totali"] = int(n)
+            st.rerun()
     else:
-        st.subheader(f"Tocca a **{giocatore}**: Quanto punti contro {mazziere}?")
-        col1, col2, col3 = st.columns(3)
-        if col1.button("1 🪙"): st.session_state.puntata = 1; st.session_state.fase = "GIOCO"
-        if col2.button("2 🪙"): st.session_state.puntata = 2; st.session_state.fase = "GIOCO"
-        if col3.button("3 🪙"): st.session_state.puntata = 3; st.session_state.fase = "GIOCO"
-        if st.session_state.fase == "GIOCO": st.rerun()
+        st.write(f"👥 Posti occupati: {len(data['nomi'])} / {data['posti_totali']}")
+        nome_utente = st.text_input("Inserisci il tuo nome per entrare:").strip()
+        if st.button("Siediti al tavolo"):
+            if nome_utente and nome_utente not in data["nomi"]:
+                data["nomi"].append(nome_utente)
+                data["fiches"][nome_utente] = 21
+                if len(data["nomi"]) == data["posti_totali"]:
+                    data["setup_finito"] = True
+                st.rerun()
+            else:
+                st.error("Nome non valido o già preso!")
+    time.sleep(1)
+    st.rerun()
 
-# --- FASE 2: GIOCO (1 CARTA) ---
-elif st.session_state.fase == "GIOCO":
-    st.write(f"🔥 **{giocatore}** vs **{mazziere}** (Puntata: {st.session_state.puntata})")
+# --- 🃏 TAVOLO DA GIOCO ---
+else:
+    # Controllo Bancarotta (Trigger Fine Gioco)
+    for n, f in data["fiches"].items():
+        if f <= 0:
+            data["vincitori"] = [g for g, fiches in data["fiches"].items() if fiches > 0]
+            st.rerun()
+
+    # Definizione Ruoli (Rotazione)
+    nome_banco = data["nomi"][data["banco_idx"] % len(data["nomi"])]
+    nome_sfidante = data["nomi"][data["sfidante_idx"] % len(data["nomi"])]
     
-    if st.button("SCOPRI LE CARTE 🃏"):
-        valori = [2,3,4,5,6,7,8,9,10,10,10,10,11]
-        carta_g = random.choice(valori)
-        carta_b = random.choice(valori)
+    # Barra laterale fiches
+    st.sidebar.title("💰 Portafogli")
+    for n, f in data["fiches"].items():
+        st.sidebar.metric(n, f"{f} 🪙")
+
+    st.title("🎰 Blackjack: Sfida Secca")
+    st.info(f"👑 Banco: **{nome_banco}** | ⚔️ Sfidante: **{nome_sfidante}**")
+
+    # --- FASE 1: PUNTATA (Solo Sfidante) ---
+    if data["fase"] == "PUNTATA":
+        st.subheader(f"Tocca a {nome_sfidante}: Quanto punti contro {nome_banco}?")
+        p = st.selectbox("Scegli puntata:", [1, 2, 3, 5])
+        if st.button("CONFERMA E GIRA"):
+            data["puntata"] = p
+            data["carta_s"] = random.randint(1, 11)
+            # Controllo Asso Sfidante
+            if data["carta_s"] == 1 or data["carta_s"] == 11:
+                data["fase"] = "ASSO_S"
+            else:
+                data["fase"] = "TURNO_BANCO"
+            st.rerun()
+
+    # --- FASE ASSE SFIDANTE ---
+    elif data["fase"] == "ASSO_S":
+        st.warning(f"🃏 {nome_sfidante}, hai un Asso! Scegli il valore:")
+        c1, c2 = st.columns(2)
+        if c1.button("Vale 1"): data["carta_s"] = 1; data["fase"] = "TURNO_BANCO"; st.rerun()
+        if c2.button("Vale 11"): data["carta_s"] = 11; data["fase"] = "TURNO_BANCO"; st.rerun()
+
+    # --- FASE 2: RISPOSTA BANCO ---
+    elif data["fase"] == "TURNO_BANCO":
+        st.write(f"🎴 Carta di {nome_sfidante}: **{data['carta_s']}**")
+        if st.button(f"Gira carta del Banco ({nome_banco})"):
+            data["carta_b"] = random.randint(1, 11)
+            # Controllo Asso Banco
+            if data["carta_b"] == 1 or data["carta_b"] == 11:
+                data["fase"] = "ASSO_B"
+            else:
+                data["fase"] = "CALCOLO"
+            st.rerun()
+
+    # --- FASE ASSE BANCO ---
+    elif data["fase"] == "ASSO_B":
+        st.warning(f"👑 {nome_banco} (Banco), hai un Asso! Scegli:")
+        c1, c2 = st.columns(2)
+        if c1.button("Vale 1 (Banco)"): data["carta_b"] = 1; data["fase"] = "CALCOLO"; st.rerun()
+        if c2.button("Vale 11 (Banco)"): data["carta_b"] = 11; data["fase"] = "CALCOLO"; st.rerun()
+
+    # --- FASE 3: CALCOLO E RISULTATO ---
+    elif data["fase"] == "CALCOLO":
+        cs, cb = data["carta_s"], data["carta_b"]
+        st.write(f"📊 Risultato: **{nome_sfidante} ({cs})** vs **{nome_banco} ({cb})**")
         
-        st.write(f"Tua carta: **{carta_g}**")
-        st.write(f"Carta del Banco: **{carta_b}**")
-        
-        if carta_g > carta_b:
-            st.success(f"{giocatore} VINCE!")
-            st.session_state.fiches[giocatore] += st.session_state.puntata
-            st.session_state.fiches[mazziere] -= st.session_state.puntata
-        elif carta_g < carta_b:
-            st.error(f"{mazziere} VINCE!")
-            st.session_state.fiches[giocatore] -= st.session_state.puntata
-            st.session_state.fiches[mazziere] += st.session_state.puntata
+        if cs > cb:
+            data["ultimo_risultato"] = f"🏆 {nome_sfidante} vince {data['puntata']} fiches!"
+            data["fiches"][nome_sfidante] += data["puntata"]
+            data["fiches"][nome_banco] -= data["puntata"]
+        elif cb > cs:
+            data["ultimo_risultato"] = f"👑 Il Banco ({nome_banco}) vince!"
+            data["fiches"][nome_sfidante] -= data["puntata"]
+            data["fiches"][nome_banco] += data["puntata"]
         else:
-            st.warning("PAREGGIO!")
-            
-        st.session_state.fase = "PROSSIMO"
+            data["ultimo_risultato"] = "⚖️ Pareggio! Nessuno perde nulla."
+        
+        data["fase"] = "RISULTATO"
         st.rerun()
 
-# --- FASE 3: PASSA TURNO ---
-elif st.session_state.fase == "PROSSIMO":
-    if st.button(f"Passa il turno al prossimo giocatore"):
-        st.session_state.turno_idx += 1
-        st.session_state.fase = "PUNTATA"
-        st.rerun()
+    elif data["fase"] == "RISULTATO":
+        st.success(data["ultimo_risultato"])
+        if st.button("Passa al Prossimo Turno ➡️"):
+            # Rotazione: lo sfidante attuale diventa il banco, il prossimo della lista sfida
+            data["banco_idx"] = data["sfidante_idx"]
+            data["sfidante_idx"] = (data["sfidante_idx"] + 1) % len(data["nomi"])
+            data["fase"] = "PUNTATA"
+            st.rerun()
+
+    # Sincronizzazione visiva (Trigger)
+    time.sleep(1.5)
+    st.rerun()
