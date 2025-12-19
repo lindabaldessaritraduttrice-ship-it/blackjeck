@@ -7,7 +7,6 @@ st.set_page_config(page_title="Blackjack Real Rules", page_icon="🃏", layout="
 # --- DATABASE CONDIVISO (Mazzo da 104 carte) ---
 @st.cache_resource
 def get_shared_data():
-    # 2 mazzi completi = 104 carte
     valori = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 8 
     mazzo = valori[:]
     random.shuffle(mazzo)
@@ -23,7 +22,7 @@ if "mio_nome" not in st.session_state:
     st.session_state.mio_nome = ""
 
 def pesca():
-    if len(data["mazzo"]) < 5: # Rimescola se finito
+    if len(data["mazzo"]) < 5:
         valori = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 8
         data["mazzo"] = valori
         random.shuffle(data["mazzo"])
@@ -50,19 +49,4 @@ if not data["setup"]:
                 st.rerun()
     time.sleep(1); st.rerun()
 
-# --- GIOCO ---
-else:
-    banco = data["nomi"][data["b_idx"] % len(data["nomi"])]
-    sfidante = data["nomi"][data["s_idx"] % len(data["nomi"])]
-    io = st.session_state.mio_nome
-
-    st.sidebar.title("💰 Saldi")
-    for n, f in data["fiches"].items(): st.sidebar.metric(n, f"{f} 🪙")
-    st.sidebar.write(f"🎴 Carte rimaste: {len(data['mazzo'])}")
-    
-    st.title("🃏 Blackjack Real Rules")
-
-    # --- FASE 1: PUNTATA ---
-    if data["fase"] == "PUNTATA":
-        if io == sfidante:
-            st.subheader(f"{io}, quanto vuoi puntare contro {banco}
+# --- G
