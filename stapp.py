@@ -7,10 +7,9 @@ st.set_page_config(page_title="Blackjack Real Deck", page_icon="🃏", layout="w
 # --- INIZIALIZZAZIONE MAZZO E DATI ---
 @st.cache_resource
 def get_shared_data():
-    # Creiamo un mazzo di 104 carte (2 mazzi da 52)
-    # Valori: 2-10, J, Q, K (valgono 10), A (vale 11 o 1)
+    # 104 carte (2 mazzi)
     valori_base = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4
-    mazzo_completo = valori_base * 2 # 104 carte
+    mazzo_completo = valori_base * 2 
     random.shuffle(mazzo_completo)
     
     return {
@@ -25,9 +24,9 @@ data = get_shared_data()
 if "mio_nome" not in st.session_state:
     st.session_state.mio_nome = ""
 
-# --- LOGICA MAZZO: PESCA CARTA ---
+# --- LOGICA MAZZO ---
 def pesca_carta():
-    if len(data["mazzo"]) < 10: # Se il mazzo è quasi finito, lo rimescoliamo
+    if len(data["mazzo"]) < 10:
         valori_base = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 8
         data["mazzo"] = valori_base
         random.shuffle(data["mazzo"])
@@ -58,32 +57,33 @@ else:
 
     st.sidebar.title("💰 Fiches")
     for n, f in data["fiches"].items(): st.sidebar.metric(n, f"{f} 🪙")
-    st.sidebar.write(f"🎴 Carte rimaste: {len(data['mazzo'])}")
+    st.sidebar.write(f"🎴 Carte nel mazzo: {len(data['mazzo'])}")
 
     st.title("🃏 Blackjack Real Deck")
-    st.caption(f"Loggato come: {io}")
+    st.caption(f"Giocatore: {io}")
 
     # FASE 1: PUNTATA
     if data["fase"] == "PUNTATA":
-        st.subheader(f"Tocca a {sfidante} puntare...")
+        st.subheader(f"Tocca a **{sfidante}** puntare")
         if io == sfidante:
-            p = st.selectbox("Quanto punti?", [1, 2, 3, 5])
-            if st.button("Conferma Puntata"):
+            p = st.selectbox("Quanto vuoi puntare?", [1, 2, 3, 5])
+            if st.button("Conferma Puntata e Ricevi Carte"):
                 data["puntata"] = p
                 data["mano_s"] = [pesca_carta(), pesca_carta()]
                 data["mano_b"] = [pesca_carta()]
                 data["fase"] = "TURNO_SFIDANTE"; st.rerun()
         else:
-            st.warning(f"Attendi che {sfidante} punti.")
+            st.warning(f"Attendi la puntata di {sfidante}...")
 
-    # FASE 2: TURNO SFIDANTE
+    # FASE 2: TURNO SFIDANTE (Con visione privata)
     elif data["fase"] == "TURNO_SFIDANTE":
         punti = sum(data["mano_s"])
-        st.subheader(f"Mano di {sfidante}: {data['mano_s']} (Totale: {punti})")
+        
         if io == sfidante:
-            c1, c2 = st.columns(2)
-            if points <= 21:
-                if c1.button("CHIEDI CARTA"):
+            st.subheader(f"🃏 Le tue carte: {data['mano_s']} (Totale: {punti})")
+            c1, col2 = st.columns(2)
+            if punti <= 21:
+                if c1.button("CHIEDI CARTA (Hit)"):
                     data["mano_s"].append(pesca_carta())
                     if sum(data["mano_s"]) > 21:
                         data["risultato"] = f"💥 {sfidante} ha sballato!"
@@ -91,10 +91,13 @@ else:
                         data["fiches"][banco] += data["puntata"]
                         data["fase"] = "RISULTATO"
                     st.rerun()
-                if c2.button("STAI"):
+                if col2.button("STAI (Stand)"):
                     data["fase"] = "TURNO_BANCO"; st.rerun()
+            else:
+                st.error("Hai sballato!")
         else:
-            st.warning(f"Turno di {sfidante}...")
+            st.info(f"Ognuno vede solo le proprie carte. **{sfidante}** sta giocando...")
+            st.write(f"Carte scoperte del Banco: {data['mano_b']}")
 
     # FASE 3: TURNO BANCO
     elif data["fase"] == "TURNO_BANCO":
@@ -102,10 +105,10 @@ else:
         st.subheader(f"Mano Banco ({banco}): {data['mano_b']} (Totale: {punti_b})")
         if io == banco:
             if punti_b < 17:
-                if st.button("Pesca Carta Obbligatoria"):
+                if st.button("Il Banco deve pescare"):
                     data["mano_b"].append(pesca_carta()); st.rerun()
             else:
-                if st.button("Confronta Carte"):
+                if st.button("Confronta Punteggi"):
                     ps, pb = sum(data["mano_s"]), sum(data["mano_b"])
                     if pb > 21 or ps > pb:
                         data["risultato"] = f"✅ {sfidante} vince!"
@@ -119,22 +122,24 @@ else:
                         data["risultato"] = "⚖️ Pareggio!"
                     data["fase"] = "RISULTATO"; st.rerun()
         else:
-            st.warning(f"Il Banco ({banco}) sta giocando...")
+            st.warning(f"Il Banco ({banco}) sta completando la mano...")
 
     # FASE 4: RISULTATO E CORIANDOLI
     elif data["fase"] == "RISULTATO":
         st.header(data["risultato"])
+        st.write(f"Sfidante: {sum(data['mano_s'])} | Banco: {sum(data['mano_b'])}")
         
         # Controllo Bancarotta
-        if any(f <= 0 for f in data["fiches"].values()):
+        bancarotta = [n for n, f in data["fiches"].items() if f <= 0]
+        if bancarotta:
             st.balloons()
-            st.error("FINALE: Qualcuno è rimasto senza fiches!")
+            st.error(f"GAME OVER: {bancarotta[0]} è fuori!")
             if st.button("Nuovo Torneo"):
                 data.update({"setup": False, "posti": 0, "nomi": [], "fiches": {}, "fase": "PUNTATA"})
                 st.rerun()
             st.stop()
             
-        if st.button("Passa al Prossimo Turno"):
+        if st.button("Prossima Mano"):
             data["b_idx"] = (data["b_idx"] + 1) % len(data["nomi"])
             data["s_idx"] = (data["b_idx"] + 1) % len(data["nomi"])
             data["fase"] = "PUNTATA"; st.rerun()
