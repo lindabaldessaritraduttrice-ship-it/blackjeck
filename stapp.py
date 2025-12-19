@@ -2,51 +2,63 @@ import streamlit as st
 import random
 import time
 
-st.set_page_config(page_title="Blackjack Real Rules", page_icon="🃏", layout="wide")
+# Configurazione della pagina per evitare bug grafici
+st.set_page_config(page_title="Blackjack Real Tournament", page_icon="🃏", layout="wide")
 
-# --- DATABASE CONDIVISO (Mazzo da 104 carte) ---
+# --- INIZIALIZZAZIONE DATABASE CONDIVISO ---
+# Usiamo cache_resource per far sì che tutti i giocatori vedano lo stesso mazzo e le stesse fiches
 @st.cache_resource
 def get_shared_data():
-    valori = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 8 
-    mazzo = valori[:]
-    random.shuffle(mazzo)
+    # Creazione del mazzo reale: 2 mazzi da 52 carte = 104 carte
+    # Valori: 2-10, J(10), Q(10), K(10), A(11)
+    semi = 8 # 4 semi per mazzo * 2 mazzi
+    valori_base = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11]
+    mazzo_completo = valori_base * semi
+    random.shuffle(mazzo_completo)
+    
     return {
-        "setup": False, "nomi": [], "fiches": {}, "posti": 0,
-        "mazzo": mazzo, "b_idx": 0, "s_idx": 1, "fase": "PUNTATA",
-        "mano_s": [], "mano_b": [], "puntata": 0, "risultato": ""
+        "setup": False,
+        "nomi": [],
+        "fiches": {},
+        "posti": 0,
+        "mazzo": mazzo_completo,
+        "b_idx": 0,       # Indice di chi fa il banco
+        "s_idx": 1,       # Indice di chi sfida
+        "fase": "PUNTATA",
+        "mano_s": [],     # Carte dello sfidante
+        "mano_b": [],     # Carte del banco
+        "puntata": 0,
+        "risultato": ""
     }
 
 data = get_shared_data()
 
+# Identità locale del giocatore (salvata nel browser di ognuno)
 if "mio_nome" not in st.session_state:
     st.session_state.mio_nome = ""
 
-def pesca():
-    if len(data["mazzo"]) < 5:
-        valori = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 8
-        data["mazzo"] = valori
-        random.shuffle(data["mazzo"])
+# Funzione per pescare dal mazzo comune
+def pesca_dal_mazzo():
+    if len(data["mazzo"]) < 10:
+        # Se il mazzo finisce, rimescoliamo 104 carte nuove
+        nuovo_mazzo = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 8
+        random.shuffle(nuovo_mazzo)
+        data["mazzo"] = nuovo_mazzo
     return data["mazzo"].pop()
 
-# --- LOBBY ---
+# --- LOGICA DELLA LOBBY (Registrazione) ---
 if not data["setup"]:
-    st.title("🎰 Blackjack Lobby")
+    st.title("🎰 Benvenuti al Tavolo di Blackjack")
+    st.write("Configura il tavolo per iniziare a giocare con i tuoi amici.")
+    
     if data["posti"] == 0:
-        n = st.number_input("In quanti giocate?", 2, 5, 3)
-        if st.button("Conferma Numero"): 
+        n = st.number_input("Quanti giocatori partecipano al torneo?", min_value=2, max_value=6, value=3)
+        if st.button("Conferma Numero Giocatori"):
             data["posti"] = n
             st.rerun()
     else:
-        st.write(f"Iscritti: {len(data['nomi'])}/{data['posti']}")
-        nome = st.text_input("Inserisci il TUO nome:").strip()
-        if st.button("Entra al Tavolo"):
-            if nome and nome not in data["nomi"]:
-                st.session_state.mio_nome = nome
-                data["nomi"].append(nome)
-                data["fiches"][nome] = 21
-                if len(data["nomi"]) == data["posti"]: 
-                    data["setup"] = True
-                st.rerun()
-    time.sleep(1); st.rerun()
-
-# --- G
+        st.subheader(f"Registrazione: {len(data['nomi'])} / {data['posti']}")
+        nome_inserito = st.text_input("Inserisci il tuo nome unico:").strip()
+        
+        if st.button("Unisciti al Gioco"):
+            if nome_
